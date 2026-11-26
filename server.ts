@@ -166,13 +166,13 @@ function decodeEntities(text: string): string {
 /** Render results for the agent: numbered, with provider and URL. */
 export function renderResults(query: string, provider: string | null, results: Result[], tried: string[]): string {
   if (!results.length) {
-    return `web_search: no results for "${query}" (tried: ${tried.join(" → ") || "nothing configured"})`;
+    return `bb_web_search: no results for "${query}" (tried: ${tried.join(" → ") || "nothing configured"})`;
   }
   const lines = results.map(
     (r, i) =>
       `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}${r.acquired ? `\n   acquired ${r.acquired.slice(0, 10)}` : ""}`,
   );
-  return `web_search "${query}" — ${results.length} result(s) via ${provider}${tried.length > 1 ? ` (after ${tried.slice(0, -1).join(", ")})` : ""}\n\n${lines.join("\n\n")}`;
+  return `bb_web_search "${query}" — ${results.length} result(s) via ${provider}${tried.length > 1 ? ` (after ${tried.slice(0, -1).join(", ")})` : ""}\n\n${lines.join("\n\n")}`;
 }
 
 // ─── Plugin ───────────────────────────────────────────────────────────
@@ -280,12 +280,12 @@ export default async function plugin(bb: BbPluginApi) {
   };
 
   bb.agents.registerTool({
-    name: "web_search",
+    name: "bb_web_search",
     description:
       "Search the web and get ranked results with URLs and snippets. Providers are tried in order — " +
       "the homelab SearXNG instance, the local Keenable index, then Brave and Serper if keys are set — " +
       "and the answer says which one produced it. Use it for current information, library documentation " +
-      "and anything the codebase cannot answer; follow up with web_extract to read a page.",
+      "and anything the codebase cannot answer; follow up with bb_web_extract to read a page.",
     parameters: z.object({
       query: z.string().min(1).describe("What to search for."),
       maxResults: z.number().int().min(1).max(20).optional().describe("Cap on results (default 8)."),
@@ -300,11 +300,11 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.agents.registerTool({
-    name: "web_extract",
+    name: "bb_web_extract",
     description:
       "Read a web page as markdown text. Prefers the Keenable CLI's fetch (clean markdown); falls back " +
       "to fetching the page and stripping tags. Returns the URL, the title if known, and the text, " +
-      "capped. Use it after web_search, or on a URL the user gave you.",
+      "capped. Use it after bb_web_search, or on a URL the user gave you.",
     parameters: z.object({
       url: z.string().url().describe("Page URL."),
       maxChars: z.number().int().min(1000).max(100_000).optional().describe("Text cap (default 20000)."),
@@ -334,14 +334,14 @@ export default async function plugin(bb: BbPluginApi) {
           signal: AbortSignal.timeout(30_000),
           redirect: "follow",
         });
-        if (!res.ok) return `web_extract: HTTP ${res.status} for ${url}`;
+        if (!res.ok) return `bb_web_extract: HTTP ${res.status} for ${url}`;
         const type = res.headers.get("content-type") ?? "";
         const body = await res.text();
         const text = type.includes("html") ? htmlToText(body) : body;
         const title = /<title>([^<]{1,300})<\/title>/i.exec(body)?.[1]?.trim();
         return `# ${title ?? url}\n${url}\n\n${text.slice(0, cap)}${text.length > cap ? "\n… truncated" : ""}`;
       } catch (err: any) {
-        return `web_extract failed: ${err?.message ?? String(err)}`;
+        return `bb_web_extract failed: ${err?.message ?? String(err)}`;
       }
     },
   });

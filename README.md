@@ -6,7 +6,7 @@ gives them all the same two tools.
 
 ## Tools
 
-### `web_search(query, maxResults?)`
+### `bb_web_search(query, maxResults?)`
 
 Walks a provider chain and stops at the first provider that answers:
 
@@ -24,11 +24,19 @@ acquisition date. Duplicates across providers are collapsed by URL.
 Order is a setting (`searxng,keenable,brave,serper` by default); a provider
 with no URL, no binary or no key is skipped, and its reason is logged.
 
-### `web_extract(url, maxChars?)`
+### `bb_web_extract(url, maxChars?)`
 
 Reads a page as markdown: `keenable fetch` first, then a plain HTTP fetch with
 tags, scripts and styles stripped. Capped, with the URL and title returned so a
 citation is possible.
+
+## Why the `bb_` prefix
+
+BB registers plugin tools into the same namespace a provider's own extensions
+see. Pi already ships `ast_grep_search` (pi-lens) and `web_search` /
+`fetch_content` (pi-web-access); registering those names made pi refuse to
+start, failing the whole thread with a tool-name conflict. Scoping the names
+keeps both sets available.
 
 ## Settings
 
