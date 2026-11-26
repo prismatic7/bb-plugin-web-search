@@ -1,0 +1,122 @@
+name: CI
+
+# Emitted by agent-dispatch bin/repo-bootstrap.sh. Stack-guarded, not
+# stack-detected: a step runs only when the manifest it needs is present.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-workflows:
+    name: Lint workflows and shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: actionlint
+        uses: raven-actions/actionlint@v2
+      - name: shellcheck
+        if: hashFiles('**/*.sh') != ''
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          severity: warning
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Python — uv when the lock exists, pip otherwise.
+      - name: Set up uv
+        if: hashFiles('uv.lock') != ''
+        uses: astral-sh/setup-uv@v7
+      - name: Python deps (uv)
+        if: hashFiles('uv.lock') != ''
+        run: uv sync --frozen
+      - name: Python tests (uv)
+        if: hashFiles('uv.lock') != '' && hashFiles('tests/**', 'test/**') != ''
+        run: uv run pytest -q
+      - name: Set up Python
+        if: hashFiles('uv.lock') == '' && hashFiles('pyproject.toml', 'requirements.txt') != ''
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Python deps (pip)
+        if: hashFiles('uv.lock') == '' && hashFiles('pyproject.toml', 'requirements.txt') != ''
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f pyproject.toml ]; then python -m pip install -e .; fi
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+      - name: Python tests (pip)
+        # A tests/ directory is not proof of a Python repo: a Node project can own
+        # one. Require a Python manifest too, or agy-ponytail-style repos run pytest.
+        if: hashFiles('uv.lock') == '' && hashFiles('pyproject.toml', 'requirements.txt', 'setup.py') != '' && hashFiles('tests/**', 'test/**') != ''
+        run: python -m pytest -q
+
+      # Node — the package manager is inferred from the lockfile. npm ci fails on
+      # a pnpm workspace (EUNSUPPORTEDPROTOCOL: workspace:*), so guessing wrong
+      # reds the repo.
+      - name: Set up Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Node deps
+        if: hashFiles('package.json') != ''
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable && pnpm install --frozen-lockfile
+          elif [ -f yarn.lock ]; then
+            corepack enable && yarn install --immutable
+          elif [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+      # Run only the scripts the repo actually declares: pnpm and yarn have no
+      # --if-present, and a workspace package often needs its build before its
+      # tests resolve (MASA's tests import the built package).
+      - name: Node build and test
+        if: hashFiles('package.json') != ''
+        run: |
+          has() { node -e "const s=require('./package.json').scripts||{}; process.exit(s['$1']?0:1)"; }
+          if [ -f pnpm-lock.yaml ]; then PM=pnpm
+          elif [ -f yarn.lock ]; then PM=yarn
+          else PM=npm
+          fi
+          if has lint;  then $PM run lint;  fi
+          if has build; then $PM run build; fi
+          if has test;  then $PM test;      fi
+          echo "node lane done"
+
+      - name: Rust toolchain
+        if: hashFiles('Cargo.toml') != ''
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cargo test
+        if: hashFiles('Cargo.toml') != ''
+        run: cargo test --all-features --locked || cargo test --all-features
+
+      - name: Set up Go
+        if: hashFiles('go.mod') != ''
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Go build and test
+        if: hashFiles('go.mod') != ''
+        run: go build ./... && go test ./...
+
+  # No dependency-review job: the dependency-graph API answers Forbidden on a
+  # repo created today, which reds every pull request (dependabot's included).
+  # OSV-Scanner runs on every push and covers the same ground.

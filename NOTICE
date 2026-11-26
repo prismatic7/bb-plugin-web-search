@@ -1,0 +1,13 @@
+bb-plugin-web-search
+====================
+
+No third-party code is included. The plugin talks to services the operator
+runs or pays for:
+
+- SearXNG (AGPL-3.0) — spoken to over its HTTP JSON API, not linked or bundled.
+- Keenable — the local CLI, invoked as a subprocess (`search`, `fetch`).
+- Brave Search API and Serper — HTTP APIs, keys supplied by the operator.
+
+The `yaml` npm package (ISC) parses Keenable's output.
+
+Everything in this repository is MIT, original work by prismatic7.
